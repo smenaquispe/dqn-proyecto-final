@@ -57,6 +57,24 @@ class CUDAClient:
         except Exception as e:
             print(f"Error notifying episode end: {e}")
             return False
+
+    def send_feedback(self, state, action, reward, next_state, done):
+        """Envía feedback de entrenamiento al servidor"""
+        try:
+            # Formatear: FEEDBACK:state|action|reward|next_state|done
+            state_str = ",".join([f"{x:.6f}" for x in state])
+            next_state_str = ",".join([f"{x:.6f}" for x in next_state])
+            
+            msg = f"FEEDBACK:{state_str}|{action}|{reward:.2f}|{next_state_str}|{int(done)}"
+            self.socket.sendall(msg.encode())
+            
+            # Esperar confirmación (breve)
+            response = self.socket.recv(1024).decode()
+            return response == "OK"
+        except Exception as e:
+            print(f"Error sending feedback: {e}")
+            self.connected = False
+            return False
     
     def save_model(self):
         """Solicita al servidor guardar el modelo"""
@@ -120,11 +138,24 @@ def train_with_cuda_server(client, env, num_episodes=100, render=True, save_inte
             next_state, reward, done, info = env.step(action)
             episode_reward += reward
             step_count += 1
-            state = next_state
-            
-            # Renderizar
-            if render:
-                env.render()
+        # Mostrar progreso
+        if (episode + 1) % 10 == 0:
+            print(f"\nEpisode {episode + 1}/{num_episodes}")
+            print(f"  Reward: {episode_reward:.2f}")
+            print(f"  Steps: {step_count}")
+            print(f"  Epsilon: {epsilon:.4f}")
+            print(f"  Best reward: {best_reward:.2f}")
+
+        # Enviar feedback de entrenamiento DESPUÉS de ejecutar la acción
+        # Se envía: estado_actual, acción_tomada, recompensa_recibida, siguiente_estado, si_terminó
+        if not client.send_feedback(state, action, reward, next_state, done):
+             print("Warning: Failed to send feedback to server")
+
+        state = next_state
+        
+        # Renderizar
+        if render:
+            env.render()
         
         # Notificar fin de episodio
         client.notify_episode_end()
