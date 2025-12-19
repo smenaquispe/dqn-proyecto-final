@@ -1,0 +1,5 @@
+ssh -i ~/.ssh/id_jetson jetson@172.22
+.234.49 "cd ~/dqn_cuda_project && ./b
+in/dqn_training_cuda"
+
+python client_cuda.py

@@ -20,15 +20,13 @@
 #define ACTION_SIZE 8
 #define BUFFER_SIZE 4096
 #define HIDDEN_SIZE 128
-#define HIDDEN_SIZE_2 64
 
-// Red neuronal (pesos y biases)
+// Red neuronal (pesos y biases) - 3 capas
 typedef struct
 {
     float *W1, *b1;
     float *W2, *b2;
     float *W3, *b3;
-    float *W4, *b4;
 } NeuralNetwork;
 
 // Kernel simple para forward pass
@@ -62,7 +60,7 @@ __global__ void final_layer_kernel(float *output, float *input, float *W, float 
     }
 }
 
-// Crear red neuronal
+// Crear red neuronal (ahora con 3 capas)
 NeuralNetwork *create_network()
 {
     NeuralNetwork *net = (NeuralNetwork *)malloc(sizeof(NeuralNetwork));
@@ -71,10 +69,8 @@ NeuralNetwork *create_network()
     cudaMalloc(&net->b1, HIDDEN_SIZE * sizeof(float));
     cudaMalloc(&net->W2, HIDDEN_SIZE * HIDDEN_SIZE * sizeof(float));
     cudaMalloc(&net->b2, HIDDEN_SIZE * sizeof(float));
-    cudaMalloc(&net->W3, HIDDEN_SIZE * HIDDEN_SIZE_2 * sizeof(float));
-    cudaMalloc(&net->b3, HIDDEN_SIZE_2 * sizeof(float));
-    cudaMalloc(&net->W4, HIDDEN_SIZE_2 * ACTION_SIZE * sizeof(float));
-    cudaMalloc(&net->b4, ACTION_SIZE * sizeof(float));
+    cudaMalloc(&net->W3, HIDDEN_SIZE * ACTION_SIZE * sizeof(float));
+    cudaMalloc(&net->b3, ACTION_SIZE * sizeof(float));
 
     return net;
 }
@@ -92,18 +88,18 @@ int load_network(NeuralNetwork *net, const char *filename)
         return -1;
     }
 
-    // Verificar tamaños
-    int sizes[5];
-    fread(sizes, sizeof(int), 5, f);
+    // Verificar tamaños (ahora son 4 valores: input -> hidden1 -> hidden2 -> output)
+    int sizes[4];
+    fread(sizes, sizeof(int), 4, f);
 
-    printf("Model architecture: %d -> %d -> %d -> %d -> %d\n",
-           sizes[0], sizes[1], sizes[2], sizes[3], sizes[4]);
+    printf("Model architecture: %d -> %d -> %d -> %d\n",
+           sizes[0], sizes[1], sizes[2], sizes[3]);
 
-    if (sizes[0] != STATE_SIZE || sizes[4] != ACTION_SIZE)
+    if (sizes[0] != STATE_SIZE || sizes[3] != ACTION_SIZE)
     {
         fprintf(stderr, "✗ Model size mismatch!\n");
-        fprintf(stderr, "  Expected: %d -> ? -> %d\n", STATE_SIZE, ACTION_SIZE);
-        fprintf(stderr, "  Got: %d -> ? -> %d\n", sizes[0], sizes[4]);
+        fprintf(stderr, "  Expected: %d -> ? -> ? -> %d\n", STATE_SIZE, ACTION_SIZE);
+        fprintf(stderr, "  Got: %d -> ? -> ? -> %d\n", sizes[0], sizes[3]);
         fclose(f);
         return -1;
     }
@@ -111,7 +107,7 @@ int load_network(NeuralNetwork *net, const char *filename)
     // Alocar memoria temporal
     float *temp;
 
-    // Capa 1
+    // Capa 1: STATE_SIZE -> HIDDEN_SIZE
     int W1_size = STATE_SIZE * HIDDEN_SIZE;
     temp = (float *)malloc(W1_size * sizeof(float));
     fread(temp, sizeof(float), W1_size, f);
@@ -123,7 +119,7 @@ int load_network(NeuralNetwork *net, const char *filename)
     cudaMemcpy(net->b1, temp, HIDDEN_SIZE * sizeof(float), cudaMemcpyHostToDevice);
     free(temp);
 
-    // Capa 2
+    // Capa 2: HIDDEN_SIZE -> HIDDEN_SIZE
     int W2_size = HIDDEN_SIZE * HIDDEN_SIZE;
     temp = (float *)malloc(W2_size * sizeof(float));
     fread(temp, sizeof(float), W2_size, f);
@@ -135,28 +131,16 @@ int load_network(NeuralNetwork *net, const char *filename)
     cudaMemcpy(net->b2, temp, HIDDEN_SIZE * sizeof(float), cudaMemcpyHostToDevice);
     free(temp);
 
-    // Capa 3
-    int W3_size = HIDDEN_SIZE * HIDDEN_SIZE_2;
+    // Capa 3: HIDDEN_SIZE -> ACTION_SIZE
+    int W3_size = HIDDEN_SIZE * ACTION_SIZE;
     temp = (float *)malloc(W3_size * sizeof(float));
     fread(temp, sizeof(float), W3_size, f);
     cudaMemcpy(net->W3, temp, W3_size * sizeof(float), cudaMemcpyHostToDevice);
     free(temp);
 
-    temp = (float *)malloc(HIDDEN_SIZE_2 * sizeof(float));
-    fread(temp, sizeof(float), HIDDEN_SIZE_2, f);
-    cudaMemcpy(net->b3, temp, HIDDEN_SIZE_2 * sizeof(float), cudaMemcpyHostToDevice);
-    free(temp);
-
-    // Capa 4
-    int W4_size = HIDDEN_SIZE_2 * ACTION_SIZE;
-    temp = (float *)malloc(W4_size * sizeof(float));
-    fread(temp, sizeof(float), W4_size, f);
-    cudaMemcpy(net->W4, temp, W4_size * sizeof(float), cudaMemcpyHostToDevice);
-    free(temp);
-
     temp = (float *)malloc(ACTION_SIZE * sizeof(float));
     fread(temp, sizeof(float), ACTION_SIZE, f);
-    cudaMemcpy(net->b4, temp, ACTION_SIZE * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(net->b3, temp, ACTION_SIZE * sizeof(float), cudaMemcpyHostToDevice);
     free(temp);
 
     fclose(f);
@@ -164,34 +148,29 @@ int load_network(NeuralNetwork *net, const char *filename)
     return 0;
 }
 
-// Forward pass
+// Forward pass (ahora con 3 capas)
 void forward_pass(NeuralNetwork *net, float *state, float *q_values)
 {
-    float *state_gpu, *layer1_gpu, *layer2_gpu, *layer3_gpu, *output_gpu;
+    float *state_gpu, *layer1_gpu, *layer2_gpu, *output_gpu;
 
     cudaMalloc(&state_gpu, STATE_SIZE * sizeof(float));
     cudaMalloc(&layer1_gpu, HIDDEN_SIZE * sizeof(float));
     cudaMalloc(&layer2_gpu, HIDDEN_SIZE * sizeof(float));
-    cudaMalloc(&layer3_gpu, HIDDEN_SIZE_2 * sizeof(float));
     cudaMalloc(&output_gpu, ACTION_SIZE * sizeof(float));
 
     cudaMemcpy(state_gpu, state, STATE_SIZE * sizeof(float), cudaMemcpyHostToDevice);
 
-    // Capa 1
+    // Capa 1: STATE_SIZE -> HIDDEN_SIZE
     simple_forward_kernel<<<HIDDEN_SIZE, 1>>>(layer1_gpu, state_gpu, net->W1, net->b1,
                                               STATE_SIZE, HIDDEN_SIZE);
 
-    // Capa 2
+    // Capa 2: HIDDEN_SIZE -> HIDDEN_SIZE
     simple_forward_kernel<<<HIDDEN_SIZE, 1>>>(layer2_gpu, layer1_gpu, net->W2, net->b2,
                                               HIDDEN_SIZE, HIDDEN_SIZE);
 
-    // Capa 3
-    simple_forward_kernel<<<HIDDEN_SIZE_2, 1>>>(layer3_gpu, layer2_gpu, net->W3, net->b3,
-                                                HIDDEN_SIZE, HIDDEN_SIZE_2);
-
-    // Capa output
-    final_layer_kernel<<<ACTION_SIZE, 1>>>(output_gpu, layer3_gpu, net->W4, net->b4,
-                                           HIDDEN_SIZE_2, ACTION_SIZE);
+    // Capa 3: HIDDEN_SIZE -> ACTION_SIZE
+    final_layer_kernel<<<ACTION_SIZE, 1>>>(output_gpu, layer2_gpu, net->W3, net->b3,
+                                           HIDDEN_SIZE, ACTION_SIZE);
 
     cudaDeviceSynchronize();
 
@@ -200,7 +179,6 @@ void forward_pass(NeuralNetwork *net, float *state, float *q_values)
     cudaFree(state_gpu);
     cudaFree(layer1_gpu);
     cudaFree(layer2_gpu);
-    cudaFree(layer3_gpu);
     cudaFree(output_gpu);
 }
 
@@ -419,8 +397,6 @@ int main(int argc, char *argv[])
     cudaFree(net->b2);
     cudaFree(net->W3);
     cudaFree(net->b3);
-    cudaFree(net->W4);
-    cudaFree(net->b4);
     free(net);
 
     printf("\n========================================\n");
