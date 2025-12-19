@@ -197,7 +197,8 @@ dqn-proyecto-final/
 ## 👥 Autores
 
 - **LeoUNSA** - Desarrollo e implementación
-
+- **SergioMQ** - Desarrollo e implementación
+- **Noodle96** - Desarrollo e implementación
 ## 📄 Licencia
 
 Este proyecto es parte del curso de Computación Paralela - UNSA 2025.
