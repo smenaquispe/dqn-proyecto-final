@@ -30,10 +30,10 @@ class CUDAClient:
             return False
     
     def send_state(self, state):
-        """Envía el estado al servidor y recibe acción"""
+        """Envía el estado al servidor y recibe acción (Inferencia)"""
         try:
             # Formatear estado como string CSV
-            state_str = "STATE:" + ",".join([f"{x:.6f}" for x in state])
+            state_str = "STEP:" + ",".join([f"{x:.6f}" for x in state])
             self.socket.sendall(state_str.encode())
             
             # Recibir respuesta
@@ -47,6 +47,22 @@ class CUDAClient:
             print(f"Error in communication: {e}")
             self.connected = False
             return None, None
+
+    def send_experience(self, state, action, reward, next_state, done):
+        """Envía la experiencia al servidor para entrenamiento"""
+        try:
+            # Formato: TRAIN:state|action|reward|next_state|done
+            state_str = ",".join([f"{x:.6f}" for x in state])
+            next_state_str = ",".join([f"{x:.6f}" for x in next_state])
+            
+            msg = f"TRAIN:{state_str}|{action}|{reward:.4f}|{next_state_str}|{1 if done else 0}"
+            self.socket.sendall(msg.encode())
+            
+            response = self.socket.recv(1024).decode()
+            return response == "OK"
+        except Exception as e:
+            print(f"Error sending experience: {e}")
+            return False
     
     def notify_episode_end(self):
         """Notifica al servidor que el episodio terminó"""
@@ -118,6 +134,11 @@ def train_with_cuda_server(client, env, num_episodes=100, render=True, save_inte
             
             # Ejecutar acción
             next_state, reward, done, info = env.step(action)
+            
+            # --- NUEVO: Enviar experiencia al servidor para entrenar ---
+            client.send_experience(state, action, reward, next_state, done)
+            # -----------------------------------------------------------
+            
             episode_reward += reward
             step_count += 1
             state = next_state
@@ -137,7 +158,7 @@ def train_with_cuda_server(client, env, num_episodes=100, render=True, save_inte
         if (episode + 1) % save_interval == 0:
             print(f"\n=== Saving model at episode {episode + 1} ===")
             if client.save_model():
-                print("✓ Model saved successfully on Jetson")
+                print("✓ Model saved successfully on Jetson (Python/PyTorch)")
             else:
                 print("⚠ Failed to save model")
         
