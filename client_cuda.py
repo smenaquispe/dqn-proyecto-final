@@ -48,6 +48,22 @@ class CUDAClient:
             self.connected = False
             return None, None
     
+    def send_feedback(self, state, action, reward, next_state, done):
+        """Envía feedback al servidor C++ CUDA para entrenamiento"""
+        try:
+            # Formato: FEEDBACK:state|action|reward|next_state|done
+            state_str = ",".join([f"{x:.6f}" for x in state])
+            next_state_str = ",".join([f"{x:.6f}" for x in next_state])
+            
+            msg = f"FEEDBACK:{state_str}|{action}|{reward:.4f}|{next_state_str}|{1 if done else 0}"
+            self.socket.sendall(msg.encode())
+            
+            response = self.socket.recv(1024).decode()
+            return response == "OK"
+        except Exception as e:
+            print(f"Error sending feedback: {e}")
+            return False
+    
     def notify_episode_end(self):
         """Notifica al servidor que el episodio terminó"""
         try:
@@ -118,6 +134,10 @@ def train_with_cuda_server(client, env, num_episodes=100, render=True, save_inte
             
             # Ejecutar acción
             next_state, reward, done, info = env.step(action)
+            
+            # Enviar feedback al servidor C++ CUDA para entrenamiento
+            client.send_feedback(state, action, reward, next_state, done)
+            
             episode_reward += reward
             step_count += 1
             state = next_state

@@ -178,34 +178,77 @@ NeuralNetwork *create_simple_network() {
   cudaMalloc(&net->d_W4, HIDDEN_SIZE_2 * ACTION_SIZE * sizeof(float));
   cudaMalloc(&net->d_b4, ACTION_SIZE * sizeof(float));
 
-  // Inicialización aleatoria simple
-  float *W1_host = (float *)malloc(STATE_SIZE * HIDDEN_SIZE * sizeof(float));
-  float *b1_host = (float *)malloc(HIDDEN_SIZE * sizeof(float));
-
   srand(time(NULL));
-  float limit = sqrtf(6.0f / (STATE_SIZE + HIDDEN_SIZE));
-  for (int i = 0; i < STATE_SIZE * HIDDEN_SIZE; i++) {
-    W1_host[i] = ((float)rand() / RAND_MAX * 2.0f - 1.0f) * limit;
-  }
-  for (int i = 0; i < HIDDEN_SIZE; i++) {
-    b1_host[i] = 0.0f;
-  }
 
-  cudaMemcpy(net->W1, W1_host, STATE_SIZE * HIDDEN_SIZE * sizeof(float),
-             cudaMemcpyHostToDevice);
+  // Xavier initialization for Layer 1: STATE_SIZE -> HIDDEN_SIZE
+  int W1_size = STATE_SIZE * HIDDEN_SIZE;
+  float *W1_host = (float *)malloc(W1_size * sizeof(float));
+  float limit1 = sqrtf(6.0f / (STATE_SIZE + HIDDEN_SIZE));
+  for (int i = 0; i < W1_size; i++) {
+    W1_host[i] = ((float)rand() / RAND_MAX * 2.0f - 1.0f) * limit1;
+  }
+  cudaMemcpy(net->W1, W1_host, W1_size * sizeof(float), cudaMemcpyHostToDevice);
+  free(W1_host);
+
+  float *b1_host = (float *)malloc(HIDDEN_SIZE * sizeof(float));
+  for (int i = 0; i < HIDDEN_SIZE; i++)
+    b1_host[i] = 0.0f;
   cudaMemcpy(net->b1, b1_host, HIDDEN_SIZE * sizeof(float),
              cudaMemcpyHostToDevice);
-
-  // Similar para otras capas (simplificado)
-  cudaMemset(net->W2, 0, HIDDEN_SIZE * HIDDEN_SIZE * sizeof(float));
-  cudaMemset(net->b2, 0, HIDDEN_SIZE * sizeof(float));
-  cudaMemset(net->W3, 0, HIDDEN_SIZE * HIDDEN_SIZE_2 * sizeof(float));
-  cudaMemset(net->b3, 0, HIDDEN_SIZE_2 * sizeof(float));
-  cudaMemset(net->W4, 0, HIDDEN_SIZE_2 * ACTION_SIZE * sizeof(float));
-  cudaMemset(net->b4, 0, ACTION_SIZE * sizeof(float));
-
-  free(W1_host);
   free(b1_host);
+
+  // Xavier initialization for Layer 2: HIDDEN_SIZE -> HIDDEN_SIZE
+  int W2_size = HIDDEN_SIZE * HIDDEN_SIZE;
+  float *W2_host = (float *)malloc(W2_size * sizeof(float));
+  float limit2 = sqrtf(6.0f / (HIDDEN_SIZE + HIDDEN_SIZE));
+  for (int i = 0; i < W2_size; i++) {
+    W2_host[i] = ((float)rand() / RAND_MAX * 2.0f - 1.0f) * limit2;
+  }
+  cudaMemcpy(net->W2, W2_host, W2_size * sizeof(float), cudaMemcpyHostToDevice);
+  free(W2_host);
+
+  float *b2_host = (float *)malloc(HIDDEN_SIZE * sizeof(float));
+  for (int i = 0; i < HIDDEN_SIZE; i++)
+    b2_host[i] = 0.0f;
+  cudaMemcpy(net->b2, b2_host, HIDDEN_SIZE * sizeof(float),
+             cudaMemcpyHostToDevice);
+  free(b2_host);
+
+  // Xavier initialization for Layer 3: HIDDEN_SIZE -> HIDDEN_SIZE_2
+  int W3_size = HIDDEN_SIZE * HIDDEN_SIZE_2;
+  float *W3_host = (float *)malloc(W3_size * sizeof(float));
+  float limit3 = sqrtf(6.0f / (HIDDEN_SIZE + HIDDEN_SIZE_2));
+  for (int i = 0; i < W3_size; i++) {
+    W3_host[i] = ((float)rand() / RAND_MAX * 2.0f - 1.0f) * limit3;
+  }
+  cudaMemcpy(net->W3, W3_host, W3_size * sizeof(float), cudaMemcpyHostToDevice);
+  free(W3_host);
+
+  float *b3_host = (float *)malloc(HIDDEN_SIZE_2 * sizeof(float));
+  for (int i = 0; i < HIDDEN_SIZE_2; i++)
+    b3_host[i] = 0.0f;
+  cudaMemcpy(net->b3, b3_host, HIDDEN_SIZE_2 * sizeof(float),
+             cudaMemcpyHostToDevice);
+  free(b3_host);
+
+  // Xavier initialization for Layer 4: HIDDEN_SIZE_2 -> ACTION_SIZE
+  int W4_size = HIDDEN_SIZE_2 * ACTION_SIZE;
+  float *W4_host = (float *)malloc(W4_size * sizeof(float));
+  float limit4 = sqrtf(6.0f / (HIDDEN_SIZE_2 + ACTION_SIZE));
+  for (int i = 0; i < W4_size; i++) {
+    W4_host[i] = ((float)rand() / RAND_MAX * 2.0f - 1.0f) * limit4;
+  }
+  cudaMemcpy(net->W4, W4_host, W4_size * sizeof(float), cudaMemcpyHostToDevice);
+  free(W4_host);
+
+  float *b4_host = (float *)malloc(ACTION_SIZE * sizeof(float));
+  for (int i = 0; i < ACTION_SIZE; i++)
+    b4_host[i] = 0.0f;
+  cudaMemcpy(net->b4, b4_host, ACTION_SIZE * sizeof(float),
+             cudaMemcpyHostToDevice);
+  free(b4_host);
+
+  printf("✓ Network initialized with Xavier weights\n");
 
   return net;
 }
@@ -697,6 +740,7 @@ int main(int argc, char *argv[]) {
   float epsilon = 1.0f;
   int episode = 0;
   int total_requests = 0;
+  int train_count = 0;
 
   // Loop principal
   char buffer[BUFFER_SIZE];
@@ -745,6 +789,7 @@ int main(int argc, char *argv[]) {
       // Trigger training every few steps
       if (replay_buffer->size > 64 && total_requests % 4 == 0) {
         train_step(net, replay_buffer);
+        train_count++;
       }
 
       strcpy(buffer, "OK");
@@ -753,6 +798,8 @@ int main(int argc, char *argv[]) {
       episode++;
       epsilon = fmaxf(0.01f, epsilon * 0.995f);
       printf("\n=== Episode %d completed ===\n", episode);
+      printf("Replay buffer size: %d\n", replay_buffer->size);
+      printf("Training steps this session: %d\n", train_count);
       printf("New epsilon: %.4f\n\n", epsilon);
 
       // Respuesta simple
