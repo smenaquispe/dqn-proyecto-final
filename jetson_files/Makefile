@@ -24,9 +24,11 @@ SERVER_TARGET = $(BIN_DIR)/dqn_server_cuda
 SERVER_SOURCES = dqn_server_cuda.cu
 INFERENCE_TARGET = $(BIN_DIR)/dqn_inference_server
 INFERENCE_SOURCES = dqn_inference_server.cu
+TRAINING_TARGET = $(BIN_DIR)/dqn_training_cuda
+TRAINING_SOURCES = dqn_training_cuda.cu
 
 # Regla por defecto
-all: directories $(TARGET) $(SERVER_TARGET) $(INFERENCE_TARGET)
+all: directories $(TARGET) $(SERVER_TARGET) $(INFERENCE_TARGET) $(TRAINING_TARGET)
 
 # Crear directorios
 directories:
@@ -51,6 +53,12 @@ $(INFERENCE_TARGET): $(INFERENCE_SOURCES)
 	$(NVCC) $(NVCC_FLAGS) -o $(INFERENCE_TARGET) $(INFERENCE_SOURCES)
 	@echo "✓ Compilación exitosa: $(INFERENCE_TARGET)"
 
+# Compilar servidor de entrenamiento (NUEVO)
+$(TRAINING_TARGET): $(TRAINING_SOURCES)
+	@echo "Compilando servidor de entrenamiento CUDA..."
+	$(NVCC) $(NVCC_FLAGS) -o $(TRAINING_TARGET) $(TRAINING_SOURCES)
+	@echo "✓ Compilación exitosa: $(TRAINING_TARGET)"
+
 # Limpiar archivos compilados
 clean:
 	@echo "Limpiando..."
@@ -71,6 +79,11 @@ run-server: $(SERVER_TARGET)
 run-inference: $(INFERENCE_TARGET)
 	@echo "Ejecutando servidor de inferencia..."
 	./$(INFERENCE_TARGET) dqn_model_final.bin
+
+# Ejecutar servidor de entrenamiento (NUEVO)
+run-training: $(TRAINING_TARGET)
+	@echo "Ejecutando servidor de entrenamiento CUDA..."
+	./$(TRAINING_TARGET)
 
 # Verificar instalación CUDA
 check-cuda:
@@ -95,6 +108,8 @@ help:
 	@echo "  make clean        - Limpiar archivos compilados"
 	@echo "  make run          - Compilar y ejecutar programa principal"
 	@echo "  make run-server   - Compilar y ejecutar servidor"
+	@echo "  make run-training - Compilar y ejecutar servidor de entrenamiento (NUEVO)"
+	@echo "  make run-inference- Compilar y ejecutar servidor de inferencia"
 	@echo "  make check-cuda   - Verificar instalación de CUDA"
 	@echo "  make device-info  - Mostrar información del dispositivo"
 	@echo "  make help         - Mostrar esta ayuda"
